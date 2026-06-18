@@ -570,36 +570,67 @@ class MainSettingsView(discord.ui.View):
 # ---------------- Admin Panel Modals ----------------
 class CreateTeamModal(discord.ui.Modal, title="Create Team"):
     team_name = discord.ui.TextInput(label="Team Name", required=True)
-    captain = discord.ui.TextInput(label="Captain (mention or ID)", required=True)
+    captain = discord.ui.TextInput(label="Captain (mention, ID, or Name#1234)", required=True)
     color = discord.ui.TextInput(label="Color code (hex, e.g. #ff0000)", required=True)
     pfp_url = discord.ui.TextInput(label="Team PFP URL (optional)", required=False)
 
     async def on_submit(self, interaction: discord.Interaction):
         guild = interaction.guild
         if guild is None:
-            await interaction.response.send_message("Use this in a server.", ephemeral=True); return
+            await interaction.response.send_message("Use this in a server.", ephemeral=True)
+            return
 
         tx = guild.get_channel(TRANSACTIONS_CHANNEL_ID)
+
+        # ---------- resolve captain ----------
         raw = self.captain.value.strip()
+
+        # 1) Mention <@123> / <@!123>
         if raw.startswith("<@") and raw.endswith(">"):
             raw = raw.strip("<@!>")
-        member = None
-        try:
-            member = await guild.fetch_member(int(raw))
-        except Exception:
-            pass
-        if member is None:
-            await interaction.response.send_message("Could not find that captain.", ephemeral=True); return
 
+        member: Optional[discord.Member] = None
+
+        # 2) Try numeric ID
+        if raw.isdigit():
+            try:
+                member = await guild.fetch_member(int(raw))
+            except Exception:
+                member = None
+
+        # 3) Try Name#1234
+        if member is None and "#" in raw:
+            name, _, discrim = raw.partition("#")
+            name = name.strip()
+            discrim = discrim.strip()
+            for m in guild.members:
+                if m.name == name and m.discriminator == discrim:
+                    member = m
+                    break
+
+        # 4) Try display name / username (case-insensitive)
+        if member is None:
+            raw_lower = raw.lower()
+            for m in guild.members:
+                if m.display_name.lower() == raw_lower or m.name.lower() == raw_lower:
+                    member = m
+                    break
+
+        if member is None:
+            await interaction.response.send_message("Could not find that captain.", ephemeral=True)
+            return
+
+        # ---------- color ----------
         c = self.color.value.strip()
         if not c.startswith("#"):
             c = "#" + c
         try:
             color_int = int(c[1:], 16)
         except Exception:
-            await interaction.response.send_message("Invalid color code.", ephemeral=True); return
+            await interaction.response.send_message("Invalid color code.", ephemeral=True)
+            return
 
-        # create role
+        # ---------- create role ----------
         try:
             role = await guild.create_role(
                 name=self.team_name.value,
@@ -607,7 +638,8 @@ class CreateTeamModal(discord.ui.Modal, title="Create Team"):
                 reason=f"Team created by {interaction.user}",
             )
         except Exception:
-            await interaction.response.send_message("Failed to create role (missing perms?).", ephemeral=True); return
+            await interaction.response.send_message("Failed to create role (missing perms?).", ephemeral=True)
+            return
 
         # register team
         add_team_to_list(role.id, role.name)
@@ -623,43 +655,49 @@ class CreateTeamModal(discord.ui.Modal, title="Create Team"):
         try:
             await member.add_roles(*roles_to_add, reason="New team created by admin")
         except Exception:
-            await interaction.response.send_message("Team created but failed to assign roles.", ephemeral=True); return
+            await interaction.response.send_message("Team created but failed to assign roles.", ephemeral=True)
+            return
 
-        # optional: process PFP URL
+        # ---------- optional PFP ----------
         pfp = (self.pfp_url.value or "").strip()
         created_emoji = None
         if pfp:
-            # fallback to aiohttp
             try:
-                import aiohttp
                 async with aiohttp.ClientSession() as sess:
                     async with sess.get(pfp, timeout=15) as resp:
                         if resp.status == 200:
                             data = await resp.read()
-                            # attempt to set role icon (if supported)
+                            # try role icon
                             try:
-                                # role.edit(icon=...) requires bytes and discord.py support
                                 await role.edit(reason=f"Set team icon by {interaction.user}", icon=data)
                             except Exception:
-                                # try to create a guild emoji as fallback
+                                # fallback: guild emoji
                                 try:
-                                    created_emoji = await guild.create_custom_emoji(name=re.sub(r"[^0-9A-Za-z_]", "_", role.name)[:32], image=data, reason="Team pfp uploaded")
+                                    safe_name = re.sub(r"[^0-9A-Za-z_]", "_", role.name)[:32] or "teamimg"
+                                    created_emoji = await guild.create_custom_emoji(
+                                        name=safe_name,
+                                        image=data,
+                                        reason="Team pfp uploaded",
+                                    )
                                 except Exception:
                                     created_emoji = None
             except Exception:
                 created_emoji = None
 
-        # log and notify
+        # ---------- log & reply ----------
         if tx:
             try:
-                await tx.send(f"# New Team Created!\n* Team Name: {role.mention}\n* Team Captain: {member.mention}")
+                await tx.send(
+                    f"# New Team Created!\n* Team Name: {role.mention}\n* Team Captain: {member.mention}"
+                )
             except Exception:
                 pass
 
-        msg_parts = [f"Team {role.mention} created and {member.mention} set as captain."]
+        parts = [f"Team {role.mention} created and {member.mention} set as captain."]
         if created_emoji:
-            msg_parts.append(f"Created emoji: {created_emoji}")
-        await interaction.response.send_message("\n".join(msg_parts), ephemeral=True)
+            parts.append(f"Created emoji: {created_emoji}")
+        await interaction.response.send_message("\n".join(parts), ephemeral=True)
+
 
 class SubmitScoreModalSeeding(discord.ui.Modal, title="Submit Score"):
     winner = discord.ui.TextInput(label="Winner (team name)", required=True)
