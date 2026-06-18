@@ -20,54 +20,101 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ---------------- CONFIG ----------------
+# ---------------- CONFIG (in‑memory only, no files) ----------------
+DEFAULT_CONFIG = {
+    "channels": {},
+    "roles": {},
+    "roster_rules": {
+        "max_roster": 12,
+        "max_co_captains": 2,
+        "max_executive": 1,
+    },
+}
+
+def save_config(cfg: dict):
+    # No-op: you said you don't want a config file
+    pass
+
+def load_config() -> dict:
+    # Always just return a copy of DEFAULT_CONFIG in memory
+    return DEFAULT_CONFIG.copy()
+
+CONFIG = load_config()
+
+# Codes state is not used on disk either, keep as no-op helpers
+def load_codes_state() -> dict:
+    return {}
+
+def save_codes_state(data: dict):
+    pass
+
+# ---------------- CONFIG CONSTANTS ----------------
 TEST_GUILD_ID = 1256454863462596728
 
 # Channel IDs
 TRANSACTIONS_CHANNEL_ID = 1276332005591617607
 TRANSACTIONS_HELP_CHANNEL_ID = 1407083997359640707
 
-
+# Role IDs
 CAPTAIN_ROLE_ID = 1290446955562008668
 CO_CAPTAIN_ROLE_ID = 1361815171202289756
 TEAM_PLAYER_ROLE_ID = 1400335655338512417
-TEAM_EXEC_ROLE_ID = 1502095348045451425
+
+TEAM_EXEC_ROLE_ID = None  # disable executives
+
+# If you use these anywhere later, you MUST put real IDs here.
+# For now I keep them as 0 so the code that checks them still runs.
+HEAD_REF_ROLE_ID = None
+REF_ROLE_ID = None
+HEAD_CASTER_ROLE_ID = None
+CASTER_ROLE_ID = None
+STREAM_WATCHER_ROLE_ID = None
+UNBORN_CAPTAIN_ROLE_ID = None
+EVENT_PING_ROLE_ID = None
+
+SCRIM_CATEGORY_ID = None
+MATCH_SCORE_CHANNEL_ID = None
+MATCH_TIMES_CHANNEL_ID = None
+ASSIGNMENTS_CHANNEL_ID = None
+FORCE_TIME_REVIEW_CHANNEL_ID = None
+
+BOARD_OF_DIRECTORS_ROLE_ID = None
+COMMUNITY_MANAGER_ROLE_ID = None
+SUPERVISOR_ROLE_ID = None
+DEVELOPMENT_TEAM_ROLE_ID = None
 
 ROSTER_LOCKED = False
 SEEDING_OPEN = False
-# ---------------- FILES ----------------
-data_file = os.getenv("data_file", "/data")
-os.makedirs(data_file, exist_ok=True)
-TEAMS_FILE = os.path.join(data_file, "teams.json")
-PLAYER_HISTORY_FILE = os.path.join(data_file, "player_history.json")
-INVITES_FILE = os.path.join(data_file, "invites.json")
-ROSTER_LOCK_FILE = os.path.join(data_file, "roster_lock.json")
 
+# ---------------- FILES (only the ones you want) ----------------
+data_dir = Path(os.getenv("data_file", "/data"))
+data_dir.mkdir(parents=True, exist_ok=True)
+
+TEAMS_FILE          = data_dir / "teams.json"
+PLAYER_HISTORY_FILE = data_dir / "player_history.json"
+INVITES_FILE        = data_dir / "invites.json"
+ROSTER_LOCK_FILE    = data_dir / "roster_lock.json"
 
 # X/Y positions are the *centers* of the first‑round boxes.
-# Adjust by a few pixels if they are still slightly off in your image.
 BRACKET_SLOT_COORDS = {
-    # LEFT SIDE (1–12) – ROUND 1 boxes
     1:  (228,  32),
     2:  (228, 122),
     3:  (228, 212),
     4:  (228, 302),
     5:  (228, 392),
-    6:  (228, 482),   # offset from your (88, 482)
+    6:  (228, 482),
     7:  (228, 572),
     8:  (228, 662),
     9:  (228, 752),
     10: (228, 842),
     11: (228, 932),
     12: (228, 1022),
-
-    # RIGHT SIDE (13–24) – ROUND 1 boxes
     13: (1396,  31),
     14: (1396, 121),
     15: (1396, 211),
     16: (1396, 301),
     17: (1396, 391),
-    18: (1396, 481),  # offset from your (1536, 479)
+    18: (1396, 481),
     19: (1396, 571),
     20: (1396, 661),
     21: (1396, 751),
@@ -76,56 +123,12 @@ BRACKET_SLOT_COORDS = {
     24: (1396, 1021),
 }
 
-
-
-
 def format_list_arrow(items: list[str]) -> str:
     if not items:
         return "> • None"
     return "\n".join(f"> • {it}" for it in items)
 
-
-
-
-def load_codes_state() -> dict:
-    if not CODES_STATE_FILE.is_file():
-        return {}
-    try:
-        with CODES_STATE_FILE.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
-
-def save_codes_state(data: dict):
-    try:
-        with CODES_STATE_FILE.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-    except Exception:
-        pass
-
-
-
-def save_config(cfg):
-    try:
-        with CONFIG_FILE.open("w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2)
-    except Exception:
-        pass
-
-def load_config():
-    if not CONFIG_FILE.is_file():
-        save_config(DEFAULT_CONFIG)
-        return DEFAULT_CONFIG.copy()
-    try:
-        with CONFIG_FILE.open("r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return DEFAULT_CONFIG.copy()
-
-CONFIG = load_config()
-
-# Standing / player-history paths
+# ------------- JSON helper functions, now using Path objects -------------
 
 def load_teams() -> list[dict]:
     if not TEAMS_FILE.is_file():
@@ -138,56 +141,6 @@ def load_teams() -> list[dict]:
     except Exception:
         pass
     return []
-
-
-
-def load_invites() -> dict:
-    if not INVITES_FILE.is_file():
-        return {}
-    try:
-        with INVITES_FILE.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                return data
-    except Exception:
-        pass
-    return {}
-
-
-def save_invites(data: dict):
-    try:
-        with INVITES_FILE.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-    except Exception:
-        pass
-
-
-def add_pending_invite(team_role_id: int, user_id: int):
-    data = load_invites()
-    key = str(team_role_id)
-    lst = data.get(key, [])
-    if user_id not in lst:
-        lst.append(user_id)
-    data[key] = lst
-    save_invites(data)
-
-
-def remove_pending_invite(team_role_id: int, user_id: int):
-    data = load_invites()
-    key = str(team_role_id)
-    lst = data.get(key)
-    if not isinstance(lst, list):
-        return
-    if user_id in lst:
-        lst.remove(user_id)
-    if lst:
-        data[key] = lst
-    else:
-        data.pop(key, None)
-    save_invites(data)
-
-
-
 
 def add_team_to_list(role_id: int, name: str):
     data = load_teams()
@@ -203,7 +156,24 @@ def add_team_to_list(role_id: int, name: str):
     except Exception:
         pass
 
+def load_invites() -> dict:
+    if not INVITES_FILE.is_file():
+        return {}
+    try:
+        with INVITES_FILE.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return {}
 
+def save_invites(data: dict):
+    try:
+        with INVITES_FILE.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
 
 def load_player_history() -> dict:
     if not PLAYER_HISTORY_FILE.is_file():
@@ -952,20 +922,23 @@ class LeaveCog(commands.Cog):
         is_co = has_role_id(member, CO_CAPTAIN_ROLE_ID)
         is_player = has_role_id(member, TEAM_PLAYER_ROLE_ID)
 
-        if not (is_player or is_co or is_exec or is_captain):
-            await interaction.response.send_message("Only players, co-captains, or captains may use this command.", ephemeral=True)
+        if not (is_player or is_co or is_captain):
+            await interaction.response.send_message(
+                "Only players, co-captains, or captains may use this command.",
+                ephemeral=True,
+            )
             return
 
         # If captain, require transfer or disallow if no candidates
         if is_captain:
-            # build candidate list: co-captains or executives who share the team_role
+            # build candidate list: co-captains who share the team_role
             candidates = []
             for m in guild.members:
                 if m.bot:
                     continue
                 if team_role not in m.roles:
                     continue
-                if has_role_id(m, CO_CAPTAIN_ROLE_ID) or has_role_id(m, TEAM_EXEC_ROLE_ID):
+                if has_role_id(m, CO_CAPTAIN_ROLE_ID):
                     # exclude the leaving captain
                     if m.id == member.id:
                         continue
@@ -975,14 +948,27 @@ class LeaveCog(commands.Cog):
 
             if not candidates:
                 await interaction.response.send_message(
-                    "You are the captain and there are no co-captains to transfer to. Please transfer captain to someone or disband the team before leaving.",
+                    "You are the captain and there are no co-captains to transfer to. "
+                    "Please transfer captain to someone or disband the team before leaving.",
                     ephemeral=True,
                 )
                 return
 
             # present select to choose new captain
-            options = [discord.SelectOption(label=c.display_name, description=f"{c.name}#{c.discriminator}", value=str(c.id)) for c in candidates]
-            select = discord.ui.Select(placeholder="Select a new captain", options=options, min_values=1, max_values=1)
+            options = [
+                discord.SelectOption(
+                    label=c.display_name,
+                    description=f"{c.name}#{c.discriminator}",
+                    value=str(c.id),
+                )
+                for c in candidates
+            ]
+            select = discord.ui.Select(
+                placeholder="Select a new captain",
+                options=options,
+                min_values=1,
+                max_values=1,
+            )
 
             async def sel_cb(sel_int: discord.Interaction):
                 new_id = int(sel_int.data["values"][0])
@@ -1004,14 +990,17 @@ class LeaveCog(commands.Cog):
                     # add captain role to new member
                     await new_member.add_roles(cap_role, reason=f"Promoted to captain by {member} via /leave")
                 except Exception:
-                    await sel_int.response.send_message("Failed to transfer captain role (missing Manage Roles?).", ephemeral=True)
+                    await sel_int.response.send_message(
+                        "Failed to transfer captain role (missing Manage Roles?).",
+                        ephemeral=True,
+                    )
                     return
 
-                # now remove leaver's team + relevant global roles
+                # now remove leaver's team + global roles
                 roles_to_remove = []
                 if team_role in member.roles:
                     roles_to_remove.append(team_role)
-                for rid in (CO_CAPTAIN_ROLE_ID, TEAM_EXEC_ROLE_ID, TEAM_PLAYER_ROLE_ID):
+                for rid in (CO_CAPTAIN_ROLE_ID, TEAM_PLAYER_ROLE_ID):
                     r = guild.get_role(rid)
                     if r and r in member.roles:
                         roles_to_remove.append(r)
@@ -1020,7 +1009,10 @@ class LeaveCog(commands.Cog):
                     if roles_to_remove:
                         await member.remove_roles(*roles_to_remove, reason=f"Left team via /leave by {member}")
                 except Exception:
-                    await sel_int.response.send_message("Transferred captain but failed to remove some roles from you (missing perms?).", ephemeral=True)
+                    await sel_int.response.send_message(
+                        "Transferred captain but failed to remove some roles from you (missing perms?).",
+                        ephemeral=True,
+                    )
                     return
 
                 # notify transactions
@@ -1031,19 +1023,26 @@ class LeaveCog(commands.Cog):
                 except Exception:
                     pass
 
-                await sel_int.response.send_message(f"Captain transferred to {new_member.mention} and you have left {team_role.name}.", ephemeral=True)
+                await sel_int.response.send_message(
+                    f"Captain transferred to {new_member.mention} and you have left {team_role.name}.",
+                    ephemeral=True,
+                )
 
             select.callback = sel_cb
             view = discord.ui.View(timeout=60)
             view.add_item(select)
-            await interaction.response.send_message("You are the captain. Select a new captain to transfer to before leaving:", view=view, ephemeral=True)
+            await interaction.response.send_message(
+                "You are the captain. Select a new captain to transfer to before leaving:",
+                view=view,
+                ephemeral=True,
+            )
             return
 
         # Not a captain — proceed to remove roles
         roles_to_remove = []
         if team_role in member.roles:
             roles_to_remove.append(team_role)
-        for rid in (CO_CAPTAIN_ROLE_ID, TEAM_EXEC_ROLE_ID, TEAM_PLAYER_ROLE_ID):
+        for rid in (CO_CAPTAIN_ROLE_ID, TEAM_PLAYER_ROLE_ID):
             r = guild.get_role(rid)
             if r and r in member.roles:
                 roles_to_remove.append(r)
@@ -1052,7 +1051,10 @@ class LeaveCog(commands.Cog):
             if roles_to_remove:
                 await member.remove_roles(*roles_to_remove, reason=f"Left team via /leave by {member}")
         except Exception:
-            await interaction.response.send_message("Failed to remove roles (missing Manage Roles permission?). Contact staff.", ephemeral=True)
+            await interaction.response.send_message(
+                "Failed to remove roles (missing Manage Roles permission?). Contact staff.",
+                ephemeral=True,
+            )
             return
 
         # notify transactions channel
