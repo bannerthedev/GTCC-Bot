@@ -568,6 +568,8 @@ class MainSettingsView(discord.ui.View):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 # ---------------- Admin Panel Modals ----------------
+import traceback
+
 class CreateTeamModal(discord.ui.Modal, title="Create Team"):
     team_name = discord.ui.TextInput(label="Team Name", required=True)
     captain = discord.ui.TextInput(label="Captain (mention, ID, or Name#1234)", required=True)
@@ -638,13 +640,14 @@ class CreateTeamModal(discord.ui.Modal, title="Create Team"):
                 reason=f"Team created by {interaction.user}",
             )
         except Exception:
+            traceback.print_exc()
             await interaction.response.send_message("Failed to create role (missing perms?).", ephemeral=True)
             return
 
         # register team
         add_team_to_list(role.id, role.name)
 
-        # assign captain & team_player role
+        # ---------- assign captain & team_player role ----------
         roles_to_add = [role]
         cap_role = guild.get_role(CAPTAIN_ROLE_ID)
         if cap_role:
@@ -652,11 +655,16 @@ class CreateTeamModal(discord.ui.Modal, title="Create Team"):
         team_player_role = guild.get_role(TEAM_PLAYER_ROLE_ID)
         if team_player_role and team_player_role not in roles_to_add:
             roles_to_add.append(team_player_role)
+
         try:
             await member.add_roles(*roles_to_add, reason="New team created by admin")
         except Exception:
-            await interaction.response.send_message("Team created but failed to assign roles.", ephemeral=True)
-            return
+            traceback.print_exc()
+            # DO NOT return here; still log the team creation
+            await interaction.response.send_message(
+                "Team created but failed to assign roles (check my role order & Manage Roles permission).",
+                ephemeral=True,
+            )
 
         # ---------- optional PFP ----------
         pfp = (self.pfp_url.value or "").strip()
@@ -691,12 +699,13 @@ class CreateTeamModal(discord.ui.Modal, title="Create Team"):
                     f"# New Team Created!\n* Team Name: {role.mention}\n* Team Captain: {member.mention}"
                 )
             except Exception:
-                pass
+                traceback.print_exc()
 
-        parts = [f"Team {role.mention} created and {member.mention} set as captain."]
+        parts = [f"Team {role.mention} created and {member.mention} set as captain (if roles could be assigned)."]
         if created_emoji:
             parts.append(f"Created emoji: {created_emoji}")
         await interaction.response.send_message("\n".join(parts), ephemeral=True)
+
 
 
 class SubmitScoreModalSeeding(discord.ui.Modal, title="Submit Score"):
