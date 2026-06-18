@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import dotenv
 import re
 from urllib.parse import urlparse, parse_qs
 import random
@@ -15,9 +16,11 @@ from discord.ext import commands
 from discord import app_commands, Object
 from pathlib import Path
 from discord.ext import tasks
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ---------------- CONFIG ----------------
-BOT_TOKEN = "BOT TOKEN"
 TEST_GUILD_ID = 1256454863462596728
 
 # Channel IDs
@@ -33,11 +36,12 @@ TEAM_EXEC_ROLE_ID = 1502095348045451425
 ROSTER_LOCKED = False
 SEEDING_OPEN = False
 # ---------------- FILES ----------------
-TEAMS_FILE = Path("teams.json")
-PLAYER_HISTORY_FILE = Path("player_history.json")
-INVITES_FILE = Path("invites.json")
-ROSTER_LOCK_FILE = Path("roster_lock.json")
-CONFIG_FILE = Path("config.json")  # replace CONFIG_PATH
+data_file = os.getenv("data_file", "/data")
+os.makedirs(data_file, exist_ok=True)
+TEAMS_FILE = os.path.join(data_file, "teams.json")
+PLAYER_HISTORY_FILE = os.path.join(data_file, "player_history.json")
+INVITES_FILE = os.path.join(data_file, "invites.json")
+ROSTER_LOCK_FILE = os.path.join(data_file, "roster_lock.json")
 
 
 # X/Y positions are the *centers* of the first‑round boxes.
@@ -136,12 +140,6 @@ def load_teams() -> list[dict]:
     return []
 
 
-
-# invites.json structure:
-# {
-#   "TEAM_ROLE_ID_STR": [USER_ID_INT, ...],
-#   ...
-# }
 
 def load_invites() -> dict:
     if not INVITES_FILE.is_file():
@@ -3058,4 +3056,4 @@ async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
 
 if __name__ == "__main__":
-    bot.run(BOT_TOKEN)
+    bot.run(os.getenv("BOT_TOKEN"))
