@@ -2638,21 +2638,21 @@ class ManageTeam(commands.Cog):
 
 
 
-
-from discord.ext import tasks
-
 class StatsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.update_stats_task.start()
         self._initialized_guilds: set[int] = set()
+        self.update_stats_task.start()
 
     def cog_unload(self):
         self.update_stats_task.cancel()
 
     async def _create_stats_once(self, guild: discord.Guild):
-        """Run once per guild: create category + channels if missing, move category to top, lock channels."""
+        """Run once per guild: set up category + channels and lock them."""
         if guild.id in self._initialized_guilds:
+            return
+
+        if not guild.me.guild_permissions.manage_channels:
             return
 
         category_name = "📊 SERVER STATS 📊"
@@ -2662,8 +2662,6 @@ class StatsCog(commands.Cog):
         # Find or create category
         category = discord.utils.get(guild.categories, name=category_name)
         if category is None:
-            if not guild.me.guild_permissions.manage_channels:
-                return
             category = await guild.create_category_channel(
                 category_name, reason="Create server stats category"
             )
@@ -2674,7 +2672,7 @@ class StatsCog(commands.Cog):
         except Exception:
             pass
 
-        # Locked permissions: everyone can see, but cannot send/connect
+        # Locked but visible permissions for @everyone
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(
                 view_channel=True,
@@ -2686,53 +2684,50 @@ class StatsCog(commands.Cog):
 
         # Find or create member channel
         member_ch = None
+        team_ch = None
         for ch in category.text_channels:
             if ch.name.startswith(member_prefix):
                 member_ch = ch
-                break
-        if member_ch is None and guild.me.guild_permissions.manage_channels:
+            elif ch.name.startswith(team_prefix):
+                team_ch = ch
+
+        if member_ch is None:
             member_ch = await guild.create_text_channel(
                 name=f"{member_prefix}: 0",
                 category=category,
                 overwrites=overwrites,
                 reason="Create member stats channel",
             )
-        elif member_ch is not None:
+        else:
             try:
-                await member_ch.edit(overwrites=overwrites, category=category)
+                await member_ch.edit(category=category, overwrites=overwrites)
             except Exception:
                 pass
 
-        # Find or create team channel
-        team_ch = None
-        for ch in category.text_channels:
-            if ch.name.startswith(team_prefix):
-                team_ch = ch
-                break
-        if team_ch is None and guild.me.guild_permissions.manage_channels:
+        if team_ch is None:
             team_ch = await guild.create_text_channel(
                 name=f"{team_prefix}: 0",
                 category=category,
                 overwrites=overwrites,
                 reason="Create team stats channel",
             )
-        elif team_ch is not None:
+        else:
             try:
-                await team_ch.edit(overwrites=overwrites, category=category)
+                await team_ch.edit(category=category, overwrites=overwrites)
             except Exception:
                 pass
 
         self._initialized_guilds.add(guild.id)
 
     async def _update_guild_stats(self, guild: discord.Guild):
-        """Only edits existing channel names; does NOT create new channels each loop."""
+        """Edit existing stats channel names (no creation here)."""
         category_name = "📊 SERVER STATS 📊"
         member_prefix = "👥 | MEMBER"
         team_prefix = "🛡️ | TEAMS"
 
         category = discord.utils.get(guild.categories, name=category_name)
         if category is None:
-            return  # created only in _create_stats_once on startup
+            return
 
         member_ch = None
         team_ch = None
@@ -2745,10 +2740,10 @@ class StatsCog(commands.Cog):
         if member_ch is None or team_ch is None:
             return
 
-        # Member count (non-bots)
-        member_count = sum(1 for m in guild.members if not m.bot)
+        # Member count including bots (Discord's own count)
+        member_count = guild.member_count or 0
 
-        # Team count from teams.json (only existing roles)
+        # Team count from teams.json (only roles that still exist)
         teams_data = load_teams()
         valid_team_count = 0
         for entry in teams_data:
@@ -2791,7 +2786,6 @@ class StatsCog(commands.Cog):
     @update_stats_task.before_loop
     async def before_update_stats(self):
         await self.bot.wait_until_ready()
-        # One-time creation per guild
         for guild in self.bot.guilds:
             try:
                 await self._create_stats_once(guild)
