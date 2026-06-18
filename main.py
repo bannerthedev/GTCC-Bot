@@ -2685,6 +2685,8 @@ class ManageTeam(commands.Cog):
 
 
 
+from discord.ext import tasks
+
 class StatsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -2787,11 +2789,12 @@ class StatsCog(commands.Cog):
         if member_ch is None or team_ch is None:
             return
 
-        # Member count including bots; fall back to len(guild.members)
+        # Member count including bots; prefer guild.member_count but fall back to cache
         raw_count = guild.member_count
-        if raw_count is None or raw_count == 0:
-            raw_count = len(guild.members)
-        member_count = raw_count
+        cache_count = len(guild.members)
+        if not raw_count or raw_count < cache_count:
+            raw_count = cache_count
+        member_count = raw_count or 0
 
         # Team count from teams.json (only roles that still exist)
         teams_data = load_teams()
@@ -2836,8 +2839,13 @@ class StatsCog(commands.Cog):
     @update_stats_task.before_loop
     async def before_update_stats(self):
         await self.bot.wait_until_ready()
-        # One-time creation per guild
+        # Force member cache and one-time setup
         for guild in self.bot.guilds:
+            try:
+                # ensure members are chunked so len(guild.members) is correct
+                await guild.chunk()
+            except Exception:
+                pass
             try:
                 await self._create_stats_once(guild)
             except Exception:
@@ -2847,10 +2855,13 @@ class StatsCog(commands.Cog):
     async def on_guild_join(self, guild: discord.Guild):
         # When the bot joins a new server, set up stats once
         try:
+            await guild.chunk()
+        except Exception:
+            pass
+        try:
             await self._create_stats_once(guild)
         except Exception:
             pass
-
 
 
 
