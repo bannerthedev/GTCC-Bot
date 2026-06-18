@@ -2682,7 +2682,7 @@ class StatsCog(commands.Cog):
             )
         }
 
-        # Find or create member channel
+        # Find or create the two channels
         member_ch = None
         team_ch = None
         for ch in category.text_channels:
@@ -2740,8 +2740,11 @@ class StatsCog(commands.Cog):
         if member_ch is None or team_ch is None:
             return
 
-        # Member count including bots (Discord's own count)
-        member_count = guild.member_count or 0
+        # Member count including bots; fall back to len(guild.members)
+        raw_count = guild.member_count
+        if raw_count is None or raw_count == 0:
+            raw_count = len(guild.members)
+        member_count = raw_count
 
         # Team count from teams.json (only roles that still exist)
         teams_data = load_teams()
@@ -2786,6 +2789,7 @@ class StatsCog(commands.Cog):
     @update_stats_task.before_loop
     async def before_update_stats(self):
         await self.bot.wait_until_ready()
+        # One-time creation per guild
         for guild in self.bot.guilds:
             try:
                 await self._create_stats_once(guild)
