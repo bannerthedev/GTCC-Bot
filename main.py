@@ -3308,18 +3308,19 @@ bot = MainBot()
 @bot.event
 async def on_ready():
     print(f"READY: {bot.user} ({bot.user.id})")
-    # force stats setup once for all guilds
     cog = bot.get_cog("StatsCog")
-    if cog:
-        for g in bot.guilds:
-            try:
-                await g.chunk()
+    print("StatsCog found:" , bool(cog))
+    for g in bot.guilds:
+        try:
+            perms = g.me.guild_permissions
+            print(f"[GUILD] {g.name} ({g.id}) - member_count={g.member_count} - me_perms: manage_channels={perms.manage_channels}, manage_roles={perms.manage_roles}, manage_guild={perms.manage_guild}")
+            # force chunk & attempt init (will print inside cog)
+            await g.chunk()
+            if cog:
                 await cog._create_stats_once(g)
                 print(f"[STATS-FORCE] attempted init for {g.name} ({g.id})")
-            except Exception as e:
-                print(f"[STATS-FORCE] error for {g.name}: {e}")
-    else:
-        print("StatsCog not found")
+        except Exception as e:
+            import traceback; traceback.print_exc()
 
 if __name__ == "__main__":
     bot.run(os.getenv("BOT_TOKEN"))
