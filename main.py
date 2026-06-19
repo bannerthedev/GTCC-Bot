@@ -3308,17 +3308,61 @@ bot = MainBot()
 @bot.event
 async def on_ready():
     print(f"READY: {bot.user} ({bot.user.id})")
-    cog = bot.get_cog("StatsCog")
-    print("StatsCog found:" , bool(cog))
     for g in bot.guilds:
         try:
-            perms = g.me.guild_permissions
-            print(f"[GUILD] {g.name} ({g.id}) - member_count={g.member_count} - me_perms: manage_channels={perms.manage_channels}, manage_roles={perms.manage_roles}, manage_guild={perms.manage_guild}")
-            # force chunk & attempt init (will print inside cog)
+            print(f"[FORCE] Init for {g.name} ({g.id}) - member_count={g.member_count}")
             await g.chunk()
-            if cog:
-                await cog._create_stats_once(g)
-                print(f"[STATS-FORCE] attempted init for {g.name} ({g.id})")
+            # direct create/find category
+            cat_name = "📊 SERVER STATS 📊"
+            member_name = "👥 | MEMBER: 0"
+            team_name = "🛡️ | TEAMS: 0"
+
+            cat = discord.utils.get(g.categories, name=cat_name)
+            if cat is None:
+                try:
+                    cat = await g.create_category(cat_name, reason="Force create stats category")
+                    print(f"[FORCE] Created category in {g.name}")
+                except discord.Forbidden:
+                    print(f"[FORCE] Missing Manage Channels in {g.name}")
+                    continue
+                except Exception as e:
+                    print(f"[FORCE] Failed to create category in {g.name}: {e}")
+                    continue
+            else:
+                print(f"[FORCE] Found category in {g.name}")
+
+            # ensure channels
+            member_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith("👥 | MEMBER"), cat.channels)
+            team_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith("🛡️ | TEAMS"), cat.channels)
+
+            overwrites = { g.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False) }
+
+            if member_ch is None:
+                try:
+                    member_ch = await g.create_text_channel(member_name, category=cat, overwrites=overwrites, reason="Force create member stats")
+                    print(f"[FORCE] Created member channel in {g.name}")
+                except Exception as e:
+                    print(f"[FORCE] Failed to create member channel in {g.name}: {e}")
+            else:
+                try:
+                    await member_ch.edit(overwrites=overwrites, category=cat)
+                    print(f"[FORCE] Verified member channel in {g.name}")
+                except Exception as e:
+                    print(f"[FORCE] Failed to edit member channel in {g.name}: {e}")
+
+            if team_ch is None:
+                try:
+                    team_ch = await g.create_text_channel(team_name, category=cat, overwrites=overwrites, reason="Force create team stats")
+                    print(f"[FORCE] Created team channel in {g.name}")
+                except Exception as e:
+                    print(f"[FORCE] Failed to create team channel in {g.name}: {e}")
+            else:
+                try:
+                    await team_ch.edit(overwrites=overwrites, category=cat)
+                    print(f"[FORCE] Verified team channel in {g.name}")
+                except Exception as e:
+                    print(f"[FORCE] Failed to edit team channel in {g.name}: {e}")
+
         except Exception as e:
             import traceback; traceback.print_exc()
 
