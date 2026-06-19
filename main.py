@@ -3302,11 +3302,24 @@ class MainBot(commands.Bot):
             print("Failed to sync commands.")
 
 
+
 bot = MainBot()
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    print(f"READY: {bot.user} ({bot.user.id})")
+    # force stats setup once for all guilds
+    cog = bot.get_cog("StatsCog")
+    if cog:
+        for g in bot.guilds:
+            try:
+                await g.chunk()
+                await cog._create_stats_once(g)
+                print(f"[STATS-FORCE] attempted init for {g.name} ({g.id})")
+            except Exception as e:
+                print(f"[STATS-FORCE] error for {g.name}: {e}")
+    else:
+        print("StatsCog not found")
 
 if __name__ == "__main__":
     bot.run(os.getenv("BOT_TOKEN"))
