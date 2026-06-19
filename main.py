@@ -3235,21 +3235,6 @@ class MainBot(commands.Bot):
                 traceback.print_exc()
                 print(f"Failed to add cog: {name}")
 
-        # Force Stats creation at startup
-        stats = self.get_cog("StatsCog")
-        if stats:
-            for g in self.guilds:
-                try:
-                    await g.chunk()
-                except Exception:
-                    pass
-                try:
-                    await stats.ensure_structure(g)
-                    print(f"[SETUP_HOOK] ensure_structure run for {g.name}")
-                except Exception:
-                    import traceback
-                    traceback.print_exc()
-
         try:
             await self.tree.sync(guild=guild_obj)
             print("Commands synced.")
@@ -3258,12 +3243,34 @@ class MainBot(commands.Bot):
             traceback.print_exc()
             print("Failed to sync commands.")
 
-
 bot = MainBot()
+_stats_ran = False
 
 @bot.event
 async def on_ready():
+    global _stats_ran
     print(f"READY: {bot.user} ({bot.user.id})")
+
+    if _stats_ran:
+        return
+    _stats_ran = True
+
+    stats = bot.get_cog("StatsCog")
+    print("StatsCog found:", bool(stats))
+    if not stats:
+        return
+
+    for g in bot.guilds:
+        try:
+            await g.chunk()
+        except Exception:
+            pass
+        try:
+            await stats.ensure_structure(g)
+            print(f"[ON_READY] ensure_structure run for {g.name} ({g.id})")
+        except Exception:
+            import traceback
+            traceback.print_exc()
 
 if __name__ == "__main__":
     bot.run(os.getenv("BOT_TOKEN"))
