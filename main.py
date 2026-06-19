@@ -2685,145 +2685,156 @@ class ManageTeam(commands.Cog):
 
 
 class StatsCog(commands.Cog):
+    """
+    Creates/maintains:
+      Category: 📊 SERVER STATS 📊   (kept at top)
+      Channel:  👥 | MEMBER: <count> (includes bots)
+      Channel:  🛡️ | TEAMS: <count>  (counts valid roles in teams.json)
+    Channels are visible but locked (no sending).
+    """
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self._initialized_guilds: set[int] = set()
         self.update_stats_task.start()
 
     def cog_unload(self):
         self.update_stats_task.cancel()
 
     async def ensure_structure(self, guild: discord.Guild):
+        print(f"[STATS] ensure_structure start for {guild.name} ({guild.id})")
+
         cat_name = "📊 SERVER STATS 📊"
         member_prefix = "👥 | MEMBER"
         team_prefix = "🛡️ | TEAMS"
 
-        # ensure category exists (create if missing)
+        # --- category ---
         category = discord.utils.get(guild.categories, name=cat_name)
         if category is None:
-            try:
-                category = await guild.create_category(cat_name, reason="Create server stats category")
-                print(f"[STATS] Created category in {guild.name}")
-            except discord.Forbidden:
-                print(f"[STATS] Forbidden: cannot create category in {guild.name}")
-                return None, None, None
-            except Exception as e:
-                print(f"[STATS] Failed to create category in {guild.name}: {e}")
-                return None, None, None
+            print(f"[STATS] creating category in {guild.name}...")
+            category = await asyncio.wait_for(
+                guild.create_category_channel(cat_name, reason="Create server stats category"),
+                timeout=15,
+            )
+            print(f"[STATS] created category in {guild.name}")
 
-        # move category to top
+        # top (best-effort)
         try:
-            await category.edit(position=0)
-        except Exception:
-            pass
+            await asyncio.wait_for(category.edit(position=0), timeout=10)
+        except Exception as e:
+            print(f"[STATS] category.edit(position=0) failed in {guild.name}: {e}")
 
-        overwrites = { guild.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False) }
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=False,
+                connect=False,
+                speak=False,
+            )
+        }
 
-        # find or create member channel
-        member_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith(member_prefix), category.channels)
+        # --- member channel ---
+        member_ch = discord.utils.find(
+            lambda c: isinstance(c, discord.TextChannel) and c.name.startswith(member_prefix),
+            category.channels,
+        )
         if member_ch is None:
+            print(f"[STATS] creating member channel in {guild.name}...")
+            member_ch = await asyncio.wait_for(
+                guild.create_text_channel(
+                    f"{member_prefix}: 0",
+                    category=category,
+                    overwrites=overwrites,
+                    reason="Create member stats channel",
+                ),
+                timeout=15,
+            )
+            print(f"[STATS] created member channel in {guild.name}: {member_ch.name}")
+        else:
+            # ensure locked perms (best-effort)
             try:
-                member_ch = await guild.create_text_channel(f"{member_prefix}: 0", category=category, overwrites=overwrites, reason="Create member stats channel")
-                print(f"[STATS] Created member channel in {guild.name}")
+                await asyncio.wait_for(member_ch.edit(overwrites=overwrites, category=category), timeout=10)
             except Exception as e:
-                print(f"[STATS] Failed to create member channel in {guild.name}: {e}")
+                print(f"[STATS] member_ch.edit failed in {guild.name}: {e}")
 
-        # find or create team channel
-        team_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith(team_prefix), category.channels)
+        # --- team channel ---
+        team_ch = discord.utils.find(
+            lambda c: isinstance(c, discord.TextChannel) and c.name.startswith(team_prefix),
+            category.channels,
+        )
         if team_ch is None:
+            print(f"[STATS] creating team channel in {guild.name}...")
+            team_ch = await asyncio.wait_for(
+                guild.create_text_channel(
+                    f"{team_prefix}: 0",
+                    category=category,
+                    overwrites=overwrites,
+                    reason="Create team stats channel",
+                ),
+                timeout=15,
+            )
+            print(f"[STATS] created team channel in {guild.name}: {team_ch.name}")
+        else:
             try:
-                team_ch = await guild.create_text_channel(f"{team_prefix}: 0", category=category, overwrites=overwrites, reason="Create team stats channel")
-                print(f"[STATS] Created team channel in {guild.name}")
+                await asyncio.wait_for(team_ch.edit(overwrites=overwrites, category=category), timeout=10)
             except Exception as e:
-                print(f"[STATS] Failed to create team channel in {guild.name}: {e}")
+                print(f"[STATS] team_ch.edit failed in {guild.name}: {e}")
 
+        print(f"[STATS] ensure_structure done for {guild.name} ({guild.id})")
         return category, member_ch, team_ch
 
     async def update_for_guild(self, guild: discord.Guild):
-        cat_name = "📊 SERVER STATS 📊"
-        member_prefix = "👥 | MEMBER"
-        team_prefix = "🛡️ | TEAMS"
+        category, member_ch, team_ch = await asyncio.wait_for(self.ensure_structure(guild), timeout=25)
 
-        category = discord.utils.get(guild.categories, name=cat_name)
-        if category is None:
-            # try to create now
-            await self.ensure_structure(guild)
-            category = discord.utils.get(guild.categories, name=cat_name)
-            if category is None:
-                return
-
-        member_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith(member_prefix), category.channels)
-        team_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith(team_prefix), category.channels)
-
-        # if missing, attempt to create
-        if member_ch is None or team_ch is None:
-            await self.ensure_structure(guild)
-            # re-resolve
-            member_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith(member_prefix), category.channels)
-            team_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith(team_prefix), category.channels)
-            if member_ch is None and team_ch is None:
-                return
-
-        # member count (prefer guild.member_count, fallback to cache)
-        raw_count = guild.member_count or 0
+        # Member count including bots
+        member_count = guild.member_count or 0
         cache_count = len(guild.members)
-        if raw_count < cache_count:
-            raw_count = cache_count
-        member_count = raw_count
+        if cache_count > member_count:
+            member_count = cache_count
 
-        # team count from teams.json
-        teams_data = load_teams()
+        # Team count (valid roles only)
         valid_team_count = 0
-        for entry in teams_data:
+        for entry in load_teams():
             rid = entry.get("role_id")
             if not rid:
                 continue
             try:
-                if guild.get_role(int(rid)):
+                if guild.get_role(int(rid)) is not None:
                     valid_team_count += 1
             except Exception:
                 continue
 
-        desired_member_name = f"{member_prefix}: {member_count}"
-        desired_team_name = f"{team_prefix}: {valid_team_count}"
+        desired_member_name = f"👥 | MEMBER: {member_count}"
+        desired_team_name = f"🛡️ | TEAMS: {valid_team_count}"
 
-        if guild.me.guild_permissions.manage_channels:
-            try:
-                if member_ch.name != desired_member_name:
-                    await member_ch.edit(name=desired_member_name)
-            except Exception as e:
-                print(f"[STATS] Failed to edit member channel in {guild.name}: {e}")
-            try:
-                if team_ch.name != desired_team_name:
-                    await team_ch.edit(name=desired_team_name)
-            except Exception as e:
-                print(f"[STATS] Failed to edit team channel in {guild.name}: {e}")
+        if guild.me and guild.me.guild_permissions.manage_channels:
+            if member_ch and member_ch.name != desired_member_name:
+                try:
+                    await asyncio.wait_for(member_ch.edit(name=desired_member_name), timeout=10)
+                except Exception as e:
+                    print(f"[STATS] member channel rename failed in {guild.name}: {e}")
+
+            if team_ch and team_ch.name != desired_team_name:
+                try:
+                    await asyncio.wait_for(team_ch.edit(name=desired_team_name), timeout=10)
+                except Exception as e:
+                    print(f"[STATS] team channel rename failed in {guild.name}: {e}")
 
     @tasks.loop(minutes=1)
     async def update_stats_task(self):
         await self.bot.wait_until_ready()
         for g in self.bot.guilds:
+            print(f"[STATS] tick -> {g.name} ({g.id})")
             try:
-                await g.chunk()
-            except Exception:
-                pass
-            try:
-                await self.update_for_guild(g)
-            except Exception as e:
-                print(f"[STATS] update error for {g.name}: {e}")
+                # chunk can hang; don't block updates
+                try:
+                    await asyncio.wait_for(g.chunk(), timeout=20)
+                except Exception as e:
+                    print(f"[STATS] chunk failed/timeout for {g.name}: {e}")
 
-    @update_stats_task.before_loop
-    async def before_update_stats(self):
-        await self.bot.wait_until_ready()
-        for g in self.bot.guilds:
-            try:
-                await g.chunk()
-            except Exception:
-                pass
-            try:
-                await self.ensure_structure(g)
+                await asyncio.wait_for(self.update_for_guild(g), timeout=35)
             except Exception as e:
-                print(f"[STATS] ensure_structure error for {g.name}: {e}")
+                print(f"[STATS] update_for_guild failed/timeout for {g.name}: {e}")
+
 
 
 
@@ -3271,11 +3282,13 @@ async def on_ready():
             print(f"[ON_READY] chunk failed/timeout for {g.name}: {e}")
 
         try:
-            await stats.ensure_structure(g)
+            await asyncio.wait_for(stats.ensure_structure(g), timeout=20)
             print(f"[ON_READY] ensure_structure run for {g.name} ({g.id})")
-        except Exception:
+        except Exception as e:
+            print(f"[ON_READY] ensure_structure failed/timeout for {g.name}: {e}")
             import traceback
             traceback.print_exc()
+
 
 if __name__ == "__main__":
     bot.run(os.getenv("BOT_TOKEN"))
