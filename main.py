@@ -3249,73 +3249,14 @@ bot = MainBot()
 async def on_ready():
     print(f"READY: {bot.user} ({bot.user.id})")
     cog = bot.get_cog("StatsCog")
-    print("StatsCog found:", bool(cog))
     for g in bot.guilds:
         try:
-            print(f"[ON_READY] Guild: {g.name} ({g.id}) member_count={g.member_count}")
-            # ensure member cache
-            try:
-                await g.chunk()
-            except Exception:
-                pass
-
-            # show bot perms
-            me = g.me
-            perms = me.guild_permissions if me else None
-            print(f"[ON_READY] Bot perms in {g.name}: manage_channels={getattr(perms,'manage_channels',None)}, manage_roles={getattr(perms,'manage_roles',None)}")
-
-            # attempt StatsCog one-time setup if cog exists, otherwise do fallback creation
+            await g.chunk()
             if cog:
-                try:
-                    await cog.ensure_structure(g)
-                    print(f"[ON_READY] StatsCog.ensure_structure called for {g.name}")
-                except Exception as e:
-                    print(f"[ON_READY] StatsCog.ensure_structure error for {g.name}: {e}")
-            else:
-                # fallback: try to create category+channels directly
-                cat_name = "📊 SERVER STATS 📊"
-                member_name = "👥 | MEMBER: 0"
-                team_name = "🛡️ | TEAMS: 0"
-                category = discord.utils.get(g.categories, name=cat_name)
-                if category is None:
-                    try:
-                        category = await g.create_category(cat_name, reason="Create server stats category (fallback)")
-                        print(f"[ON_READY] Fallback created category in {g.name}")
-                    except Exception as e:
-                        print(f"[ON_READY] Fallback failed to create category in {g.name}: {e}")
-                        continue
-
-                overwrites = { g.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False) }
-                try:
-                    member_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith("👥 | MEMBER"), category.channels)
-                    if member_ch is None:
-                        member_ch = await g.create_text_channel(member_name, category=category, overwrites=overwrites, reason="Fallback create member stats")
-                        print(f"[ON_READY] Fallback created member channel in {g.name}")
-                    else:
-                        print(f"[ON_READY] Fallback found member channel: {member_ch.name}")
-
-                    team_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith("🛡️ | TEAMS"), category.channels)
-                    if team_ch is None:
-                        team_ch = await g.create_text_channel(team_name, category=category, overwrites=overwrites, reason="Fallback create team stats")
-                        print(f"[ON_READY] Fallback created team channel in {g.name}")
-                    else:
-                        print(f"[ON_READY] Fallback found team channel: {team_ch.name}")
-                except Exception as e:
-                    print(f"[ON_READY] Fallback channel create/edit error in {g.name}: {e}")
-
-            # diagnostic: list category channels and overwrites
-            cat = discord.utils.get(g.categories, name="📊 SERVER STATS 📊")
-            if cat:
-                print(f"[ON_READY] Stats category channels in {g.name}:")
-                for ch in cat.channels:
-                    try:
-                        perm = ch.overwrites_for(g.default_role)
-                        print(f"  - {ch.name} ({type(ch).__name__}) id={ch.id} everyone_view={perm.view_channel} everyone_send={perm.send_messages}")
-                    except Exception:
-                        print(f"  - {ch.name} (could not read perms)")
-        except Exception:
-            import traceback
-            traceback.print_exc()
+                await cog.ensure_structure(g)
+                print(f"[ON_READY] ensure_structure called for {g.name}")
+        except Exception as e:
+            print(f"[ON_READY] error for {g.name}: {e}")
 
 if __name__ == "__main__":
     bot.run(os.getenv("BOT_TOKEN"))
