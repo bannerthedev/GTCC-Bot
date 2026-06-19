@@ -2684,7 +2684,6 @@ class ManageTeam(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-
 class StatsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -2695,38 +2694,43 @@ class StatsCog(commands.Cog):
         self.update_stats_task.cancel()
 
     async def _create_stats_once(self, guild: discord.Guild):
-        """Run once per guild: set up category + channels and lock them."""
         print(f"[STATS] _create_stats_once for {guild.name} ({guild.id})")
-
         if guild.id in self._initialized_guilds:
             print(f"[STATS] Already initialized for {guild.name}")
-            return
-
-        if not guild.me.guild_permissions.manage_channels:
-            print(f"[STATS] Missing Manage Channels in {guild.name}")
             return
 
         category_name = "📊 SERVER STATS 📊"
         member_prefix = "👥 | MEMBER"
         team_prefix = "🛡️ | TEAMS"
 
-        # Find or create category
-        category = discord.utils.get(guild.categories, name=category_name)
+        # find existing category safely
+        try:
+            category = discord.utils.get(guild.categories, name=category_name)
+        except Exception as e:
+            print(f"[STATS] Failed to list categories in {guild.name}: {e}")
+            category = None
+
+        # create category if missing
         if category is None:
-            print(f"[STATS] Creating category {category_name} in {guild.name}")
-            category = await guild.create_category_channel(
-                category_name, reason="Create server stats category"
-            )
+            try:
+                category = await guild.create_category_channel(category_name, reason="Create server stats category")
+                print(f"[STATS] Created category {category_name} in {guild.name}")
+            except discord.Forbidden:
+                print(f"[STATS] Missing Manage Channels permission in {guild.name} (cannot create category)")
+                return
+            except Exception as e:
+                print(f"[STATS] Failed to create category in {guild.name}: {e}")
+                return
         else:
             print(f"[STATS] Found existing category {category_name} in {guild.name}")
 
-        # Move category to the very top
+        # move category to top (best effort)
         try:
             await category.edit(position=0)
         except Exception as e:
             print(f"[STATS] Failed to move category to top in {guild.name}: {e}")
 
-        # Locked but visible permissions for @everyone
+        # locked-but-visible overwrites for @everyone
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(
                 view_channel=True,
@@ -2736,57 +2740,54 @@ class StatsCog(commands.Cog):
             )
         }
 
-        # Find or create the two channels
-        member_ch = None
-        team_ch = None
-        for ch in category.text_channels:
-            if ch.name.startswith(member_prefix):
-                member_ch = ch
-            elif ch.name.startswith(team_prefix):
-                team_ch = ch
-
+        # find or create member channel
+        member_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith(member_prefix), category.channels)
         if member_ch is None:
-            print(f"[STATS] Creating member stats channel in {guild.name}")
-            member_ch = await guild.create_text_channel(
-                name=f"{member_prefix}: 0",
-                category=category,
-                overwrites=overwrites,
-                reason="Create member stats channel",
-            )
+            try:
+                member_ch = await guild.create_text_channel(name=f"{member_prefix}: 0", category=category, overwrites=overwrites, reason="Create member stats channel")
+                print(f"[STATS] Created member stats channel in {guild.name}")
+            except discord.Forbidden:
+                print(f"[STATS] Missing Manage Channels permission in {guild.name} (cannot create member channel)")
+            except Exception as e:
+                print(f"[STATS] Failed to create member channel in {guild.name}: {e}")
         else:
             print(f"[STATS] Found existing member stats channel {member_ch.name} in {guild.name}")
             try:
                 await member_ch.edit(category=category, overwrites=overwrites)
             except Exception as e:
-                print(f"[STATS] Failed to edit member stats channel in {guild.name}: {e}")
+                print(f"[STATS] Failed to edit member channel in {guild.name}: {e}")
 
+        # find or create team channel
+        team_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith(team_prefix), category.channels)
         if team_ch is None:
-            print(f"[STATS] Creating team stats channel in {guild.name}")
-            team_ch = await guild.create_text_channel(
-                name=f"{team_prefix}: 0",
-                category=category,
-                overwrites=overwrites,
-                reason="Create team stats channel",
-            )
+            try:
+                team_ch = await guild.create_text_channel(name=f"{team_prefix}: 0", category=category, overwrites=overwrites, reason="Create team stats channel")
+                print(f"[STATS] Created team stats channel in {guild.name}")
+            except discord.Forbidden:
+                print(f"[STATS] Missing Manage Channels permission in {guild.name} (cannot create team channel)")
+            except Exception as e:
+                print(f"[STATS] Failed to create team channel in {guild.name}: {e}")
         else:
             print(f"[STATS] Found existing team stats channel {team_ch.name} in {guild.name}")
             try:
                 await team_ch.edit(category=category, overwrites=overwrites)
             except Exception as e:
-                print(f"[STATS] Failed to edit team stats channel in {guild.name}: {e}")
+                print(f"[STATS] Failed to edit team channel in {guild.name}: {e}")
 
-        self._initialized_guilds.add(guild.id)
-        print(f"[STATS] Initialization complete for {guild.name}")
+        # mark initialized if at least one channel is present
+        if category and (member_ch or team_ch):
+            self._initialized_guilds.add(guild.id)
+            print(f"[STATS] Initialization complete for {guild.name}")
+        else:
+            print(f"[STATS] Initialization incomplete for {guild.name} (member_ch={member_ch}, team_ch={team_ch})")
 
     async def _update_guild_stats(self, guild: discord.Guild):
-        """Edit existing stats channel names (no creation here)."""
         category_name = "📊 SERVER STATS 📊"
         member_prefix = "👥 | MEMBER"
         team_prefix = "🛡️ | TEAMS"
 
         category = discord.utils.get(guild.categories, name=category_name)
         if category is None:
-            # Not set up yet
             print(f"[STATS] No stats category found in {guild.name}")
             return
 
@@ -2802,7 +2803,7 @@ class StatsCog(commands.Cog):
             print(f"[STATS] Missing stats channels in {guild.name} (member_ch={member_ch}, team_ch={team_ch})")
             return
 
-        # Member count including bots; prefer guild.member_count, fall back to cache
+        # ensure member cache: use guild.member_count fallback to len(cache)
         raw_count = guild.member_count
         cache_count = len(guild.members)
         if not raw_count or raw_count < cache_count:
@@ -2811,7 +2812,7 @@ class StatsCog(commands.Cog):
 
         print(f"[STATS] {guild.name}: member_count={member_count} (guild.member_count={guild.member_count}, cache={cache_count})")
 
-        # Team count from teams.json (only roles that still exist)
+        # count valid teams
         teams_data = load_teams()
         valid_team_count = 0
         for entry in teams_data:
@@ -2822,8 +2823,7 @@ class StatsCog(commands.Cog):
                 rid_int = int(rid)
             except Exception:
                 continue
-            role = guild.get_role(rid_int)
-            if role is not None:
+            if guild.get_role(rid_int) is not None:
                 valid_team_count += 1
 
         print(f"[STATS] {guild.name}: team_count={valid_team_count}")
@@ -2861,10 +2861,8 @@ class StatsCog(commands.Cog):
     @update_stats_task.before_loop
     async def before_update_stats(self):
         await self.bot.wait_until_ready()
-        # Force member cache and one-time setup
         for guild in self.bot.guilds:
             try:
-                # Ensure members are chunked so len(guild.members) is correct
                 await guild.chunk()
                 print(f"[STATS] Chunked members for {guild.name}")
             except Exception as e:
@@ -2877,7 +2875,6 @@ class StatsCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild):
-        # When the bot joins a new server, set up stats once
         try:
             await guild.chunk()
             print(f"[STATS] Chunked members on guild join for {guild.name}")
