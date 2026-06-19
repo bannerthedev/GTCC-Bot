@@ -3203,10 +3203,6 @@ class CommandGuideCog(commands.Cog):
 
 
 # ---------------- BOT SETUP ----------------
-class MainBot(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix="!", intents=INTENTS)
-
     async def setup_hook(self):
         guild_obj = Object(id=TEST_GUILD_ID)
         cog_names = [
@@ -3232,6 +3228,20 @@ class MainBot(commands.Bot):
                 import traceback
                 traceback.print_exc()
                 print(f"Failed to add cog: {name}")
+
+        # Directly run StatsCog.ensure_structure for all guilds (force creation at startup)
+        stats = self.get_cog("StatsCog")
+        if stats:
+            for g in self.guilds:
+                try:
+                    await g.chunk()
+                except Exception:
+                    pass
+                try:
+                    await stats.ensure_structure(g)
+                    print(f"[SETUP_HOOK] ensure_structure run for {g.name}")
+                except Exception:
+                    import traceback; traceback.print_exc()
 
         try:
             await self.tree.sync(guild=guild_obj)
