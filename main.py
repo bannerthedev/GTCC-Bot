@@ -3252,24 +3252,21 @@ async def on_ready():
     cog = bot.get_cog("StatsCog")
     print("StatsCog found:", bool(cog))
     for g in bot.guilds:
+        print(f"[ON_READY] {g.name} ({g.id}) member_count={g.member_count}")
         try:
-            print(f"[ON_READY] {g.name} ({g.id}) member_count={g.member_count}")
-            try:
-                await g.chunk()
-            except Exception as e:
-                print(f"[ON_READY] chunk failed for {g.name}: {e}")
-            if cog:
-                try:
-                    await cog.ensure_structure(g)
-                    print(f"[ON_READY] ensure_structure called for {g.name}")
-                except Exception:
-                    print(f"[ON_READY] ensure_structure raised for {g.name}:")
-                    traceback.print_exc()
-            else:
-                print("[ON_READY] StatsCog missing")
-        except Exception:
-            print(f"[ON_READY] outer error for {g.name}:")
+            await g.chunk()
+        except Exception as e:
+            print(f"[ON_READY] chunk failed for {g.name}: {e}")
             traceback.print_exc()
+        if cog:
+            try:
+                await cog.ensure_structure(g)
+                print(f"[ON_READY] ensure_structure called for {g.name}")
+            except Exception:
+                print(f"[ON_READY] ensure_structure raised for {g.name}:")
+                traceback.print_exc()
+        else:
+            print("[ON_READY] StatsCog missing")
 
 if __name__ == "__main__":
     bot.run(os.getenv("BOT_TOKEN"))
