@@ -3209,7 +3209,6 @@ class MainBot(commands.Bot):
 
     async def setup_hook(self):
         guild_obj = Object(id=TEST_GUILD_ID)
-
         cog_names = [
             "AdminPanel",
             "ManageTeam",
@@ -3243,6 +3242,7 @@ class MainBot(commands.Bot):
             traceback.print_exc()
             print("Failed to sync commands.")
 
+
 bot = MainBot()
 _stats_ran = False
 
@@ -3261,10 +3261,15 @@ async def on_ready():
         return
 
     for g in bot.guilds:
+        print(f"[ON_READY] working on {g.name} ({g.id})")
+
+        # chunk may hang on large guilds; don't block stats creation
         try:
-            await g.chunk()
-        except Exception:
-            pass
+            await asyncio.wait_for(g.chunk(), timeout=20)
+            print(f"[ON_READY] chunked {g.name}")
+        except Exception as e:
+            print(f"[ON_READY] chunk failed/timeout for {g.name}: {e}")
+
         try:
             await stats.ensure_structure(g)
             print(f"[ON_READY] ensure_structure run for {g.name} ({g.id})")
