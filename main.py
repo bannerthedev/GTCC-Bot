@@ -3203,31 +3203,56 @@ class CommandGuideCog(commands.Cog):
 
 
 # ---------------- BOT SETUP ----------------
-    async def setup_hook(self):
-        guild_obj = Object(id=TEST_GUILD_ID)
-        cog_names = [
-            "AdminPanel",
-            "ManageTeam",
-            "RosterCog",
-            "InfoCommands",
-            "AdminManage",
-            "SchedulingAdmin",
-            "LeaveCog",
-            "CommandGuideCog",
-            "StatsCog",
-        ]
-        for name in cog_names:
-            cls = globals().get(name)
-            if cls is None:
-                print(f"Skipping cog {name}: not defined")
-                continue
+class MainBot(commands.Bot):
+    def init(self):
+        super().init(command_prefix="!", intents=INTENTS)
+async def setup_hook(self):
+    guild_obj = Object(id=TEST_GUILD_ID)
+    cog_names = [
+        "AdminPanel",
+        "ManageTeam",
+        "RosterCog",
+        "InfoCommands",
+        "AdminManage",
+        "SchedulingAdmin",
+        "LeaveCog",
+        "CommandGuideCog",
+        "StatsCog",
+    ]
+    for name in cog_names:
+        cls = globals().get(name)
+        if cls is None:
+            print(f"Skipping cog {name}: not defined")
+            continue
+        try:
+            await self.add_cog(cls(self))
+            print(f"Added cog: {name}")
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            print(f"Failed to add cog: {name}")
+
+    # Directly run StatsCog.ensure_structure for all guilds (force creation at startup)
+    stats = self.get_cog("StatsCog")
+    if stats:
+        for g in self.guilds:
             try:
-                await self.add_cog(cls(self))
-                print(f"Added cog: {name}")
+                await g.chunk()
             except Exception:
-                import traceback
-                traceback.print_exc()
-                print(f"Failed to add cog: {name}")
+                pass
+            try:
+                await stats.ensure_structure(g)
+                print(f"[SETUP_HOOK] ensure_structure run for {g.name}")
+            except Exception:
+                import traceback; traceback.print_exc()
+
+    try:
+        await self.tree.sync(guild=guild_obj)
+        print("Commands synced.")
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        print("Failed to sync commands.")
 
         # Directly run StatsCog.ensure_structure for all guilds (force creation at startup)
         stats = self.get_cog("StatsCog")
@@ -3268,11 +3293,12 @@ async def on_ready():
                 try:
                     await cog.ensure_structure(g)
                     print(f"[ON_READY] ensure_structure called for {g.name}")
-                except Exception as e:
+                except Exception:
                     import traceback; traceback.print_exc()
             else:
                 print("[ON_READY] StatsCog missing")
         except Exception:
             import traceback; traceback.print_exc()
-if __name__ == "__main__":
+
+if name == "main":
     bot.run(os.getenv("BOT_TOKEN"))
