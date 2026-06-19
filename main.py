@@ -3249,24 +3249,82 @@ bot = MainBot()
 async def on_ready():
     import traceback
     print(f"READY: {bot.user} ({bot.user.id})")
-    cog = bot.get_cog("StatsCog")
-    print("StatsCog found:", bool(cog))
     for g in bot.guilds:
-        print(f"[ON_READY] {g.name} ({g.id}) member_count={g.member_count}")
+        print(f"[ON_READY] Guild: {g.name} ({g.id}) member_count={g.member_count}")
         try:
-            await g.chunk()
-        except Exception as e:
-            print(f"[ON_READY] chunk failed for {g.name}: {e}")
-            traceback.print_exc()
-        if cog:
+            # ensure cache
             try:
-                await cog.ensure_structure(g)
-                print(f"[ON_READY] ensure_structure called for {g.name}")
+                await g.chunk()
+            except Exception as e:
+                print(f"[ON_READY] chunk failed: {e}")
+
+            cat_name = "📊 SERVER STATS 📊"
+            member_name = "👥 | MEMBER: 0"
+            team_name = "🛡️ | TEAMS: 0"
+
+            # find or create category
+            try:
+                category = discord.utils.get(g.categories, name=cat_name)
+            except Exception as e:
+                print(f"[ON_READY] category lookup failed: {e}")
+                category = None
+
+            if category is None:
+                try:
+                    category = await g.create_category(cat_name, reason="Create server stats category (on_ready)")
+                    print(f"[ON_READY] Created category {cat_name}")
+                except discord.Forbidden:
+                    print("[ON_READY] Forbidden: missing Manage Channels permission")
+                    continue
+                except Exception:
+                    print("[ON_READY] Exception creating category:")
+                    traceback.print_exc()
+                    continue
+            else:
+                print("[ON_READY] Found category:", category.name)
+
+            # ensure channels and overwrites
+            overwrites = { g.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False) }
+
+            try:
+                member_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith("👥 | MEMBER"), category.channels)
+                if member_ch is None:
+                    member_ch = await g.create_text_channel(member_name, category=category, overwrites=overwrites, reason="Create member stats (on_ready)")
+                    print("[ON_READY] Created member channel:", member_ch.name)
+                else:
+                    print("[ON_READY] Found member channel:", member_ch.name)
+                    await member_ch.edit(overwrites=overwrites, category=category)
+            except discord.Forbidden:
+                print("[ON_READY] Forbidden creating/editing member channel")
             except Exception:
-                print(f"[ON_READY] ensure_structure raised for {g.name}:")
+                print("[ON_READY] Exception handling member channel:")
                 traceback.print_exc()
-        else:
-            print("[ON_READY] StatsCog missing")
+
+            try:
+                team_ch = discord.utils.find(lambda c: isinstance(c, discord.TextChannel) and c.name.startswith("🛡️ | TEAMS"), category.channels)
+                if team_ch is None:
+                    team_ch = await g.create_text_channel(team_name, category=category, overwrites=overwrites, reason="Create team stats (on_ready)")
+                    print("[ON_READY] Created team channel:", team_ch.name)
+                else:
+                    print("[ON_READY] Found team channel:", team_ch.name)
+                    await team_ch.edit(overwrites=overwrites, category=category)
+            except discord.Forbidden:
+                print("[ON_READY] Forbidden creating/editing team channel")
+            except Exception:
+                print("[ON_READY] Exception handling team channel:")
+                traceback.print_exc()
+
+            # list channels and perms for verification
+            print("[ON_READY] Final category contents:")
+            for ch in category.channels:
+                try:
+                    perm = ch.overwrites_for(g.default_role)
+                    print(f"  - {ch.name} ({type(ch).__name__}) view={perm.view_channel} send={perm.send_messages}")
+                except Exception:
+                    print(f"  - {ch.name} (could not read perms)")
+        except Exception:
+            print("[ON_READY] Outer exception for guild:")
+            traceback.print_exc()
 
 if __name__ == "__main__":
     bot.run(os.getenv("BOT_TOKEN"))
