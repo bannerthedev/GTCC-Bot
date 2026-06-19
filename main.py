@@ -3247,6 +3247,7 @@ bot = MainBot()
 
 @bot.event
 async def on_ready():
+    import traceback
     print(f"READY: {bot.user} ({bot.user.id})")
     cog = bot.get_cog("StatsCog")
     print("StatsCog found:", bool(cog))
@@ -3255,15 +3256,20 @@ async def on_ready():
             print(f"[ON_READY] {g.name} ({g.id}) member_count={g.member_count}")
             try:
                 await g.chunk()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[ON_READY] chunk failed for {g.name}: {e}")
             if cog:
-                await cog.ensure_structure(g)
-                print(f"[ON_READY] ensure_structure called for {g.name}")
+                try:
+                    await cog.ensure_structure(g)
+                    print(f"[ON_READY] ensure_structure called for {g.name}")
+                except Exception:
+                    print(f"[ON_READY] ensure_structure raised for {g.name}:")
+                    traceback.print_exc()
             else:
                 print("[ON_READY] StatsCog missing")
-        except Exception as e:
-            print(f"[ON_READY] error for {g.name}: {e}")
+        except Exception:
+            print(f"[ON_READY] outer error for {g.name}:")
+            traceback.print_exc()
 
 if __name__ == "__main__":
     bot.run(os.getenv("BOT_TOKEN"))
