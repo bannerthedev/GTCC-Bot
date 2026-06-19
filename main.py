@@ -3310,28 +3310,23 @@ async def on_ready():
     print(f"READY: {bot.user} ({bot.user.id})")
     for g in bot.guilds:
         try:
-            me = g.me
-            perms = me.guild_permissions if me else None
-            print(f"[DIAG] Guild: {g.name} ({g.id}) member_count={g.member_count}")
-            print(f"[DIAG] Bot member object: {me}")
-            print(f"[DIAG] Bot perms: manage_channels={getattr(perms,'manage_channels',None)}, manage_roles={getattr(perms,'manage_roles',None)}")
-            cats = [c.name for c in g.categories]
-            print(f"[DIAG] Existing categories: {cats}")
-            # try a minimal create test (no edits) but only print outcome
+            cat = discord.utils.get(g.categories, name="📊 SERVER STATS 📊")
+            if not cat:
+                print(f"[CHK] No stats category in {g.name}")
+                continue
+            print(f"[CHK] Stats category found in {g.name} - channels:")
+            for ch in cat.channels:
+                perm = ch.overwrites_for(g.default_role)
+                print(f"  - {ch.name} ({type(ch).__name__}) id={ch.id} everyone_view={perm.view_channel} everyone_send={perm.send_messages}")
+            # attempt to create a dummy channel (then delete) to confirm create permission
             try:
-                cat = discord.utils.get(g.categories, name="___STATS_TEST_TMP___")
-                if cat:
-                    print("[DIAG] Test category already exists")
-                else:
-                    try:
-                        await g.create_category_channel("___STATS_TEST_TMP___", reason="diag test")
-                        print("[DIAG] Test category CREATED")
-                    except discord.Forbidden:
-                        print("[DIAG] Forbidden to create test category (no Manage Channels)")
-                    except Exception as e:
-                        print(f"[DIAG] Failed to create test category: {e}")
+                tmp = await g.create_text_channel("___stats-create-test___", category=cat, reason="diag create test")
+                print("[CHK] Successfully created tmp channel, now deleting it")
+                await tmp.delete(reason="diag cleanup")
+            except discord.Forbidden:
+                print("[CHK] Forbidden to create channel in stats category")
             except Exception as e:
-                print(f"[DIAG] Category check error: {e}")
+                print(f"[CHK] Create test failed: {e}")
         except Exception:
             import traceback; traceback.print_exc()
 
