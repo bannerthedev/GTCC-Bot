@@ -3232,6 +3232,28 @@ async def setup_hook(self):
             traceback.print_exc()
             print(f"Failed to add cog: {name}")
 
+    # force StatsCog setup at startup
+    stats = self.get_cog("StatsCog")
+    if stats:
+        for g in self.guilds:
+            try:
+                await g.chunk()
+            except Exception:
+                pass
+            try:
+                await stats.ensure_structure(g)
+                print(f"[SETUP_HOOK] ensure_structure run for {g.name}")
+            except Exception:
+                import traceback; traceback.print_exc()
+
+    try:
+        await self.tree.sync(guild=guild_obj)
+        print("Commands synced.")
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        print("Failed to sync commands.")
+
     # Directly run StatsCog.ensure_structure for all guilds (force creation at startup)
     stats = self.get_cog("StatsCog")
     if stats:
